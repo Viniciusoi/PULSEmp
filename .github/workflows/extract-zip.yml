@@ -1,1 +1,58 @@
+name: Extract project ZIP
 
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  extract:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Extract ZIP safely
+        run: |
+          python3 - <<'PY'
+          import shutil
+          import zipfile
+          from pathlib import Path, PurePosixPath
+
+          archive = Path("Pulse-Player.zip")
+          if not archive.exists():
+              raise SystemExit("Pulse-Player.zip not found in repository root.")
+
+          with zipfile.ZipFile(archive) as zf:
+              for info in zf.infolist():
+                  if info.is_dir():
+                      continue
+
+                  path = PurePosixPath(info.filename)
+                  if path.is_absolute() or ".." in path.parts:
+                      raise SystemExit(f"Unsafe ZIP path: {info.filename}")
+
+                  if path.parts and path.parts[0] in (".git", ".github"):
+                      print(f"Skipping protected path: {info.filename}")
+                      continue
+
+                  if "__MACOSX" in path.parts:
+                      continue
+
+                  destination = Path(*path.parts)
+                  destination.parent.mkdir(parents=True, exist_ok=True)
+
+                  with zf.open(info) as src, destination.open("wb") as dst:
+                      shutil.copyfileobj(src, dst)
+          PY
+
+      - name: Commit extracted files
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if ! git diff --cached --quiet; then
+            git commit -m "Extract project ZIP"
+            git push
+          fi
