@@ -5,14 +5,11 @@ on:
   push:
     branches: [main, master]
 
-permissions:
-  contents: read
-
 jobs:
   build:
     runs-on: ubuntu-latest
     env:
-      ANDROID_SDK_ROOT: ${{ runner.temp }}/android-sdk
+      ANDROID_SDK_ROOT: /opt/android-sdk
 
     steps:
       - name: Check out repository
@@ -27,14 +24,30 @@ jobs:
       - name: Install Android SDK
         shell: bash
         run: |
-          mkdir -p "$ANDROID_SDK_ROOT/cmdline-tools/latest" /tmp/android-cli
-          curl -fsSL https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -o /tmp/cmdline-tools.zip
-          unzip -q /tmp/cmdline-tools.zip -d /tmp/android-cli
-          cp -R /tmp/android-cli/cmdline-tools/. "$ANDROID_SDK_ROOT/cmdline-tools/latest/"
+          set -euxo pipefail
+
+          mkdir -p "$ANDROID_SDK_ROOT"
+
+          cd /tmp
+          curl -fsSL https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -o cmdline-tools.zip
+          rm -rf /tmp/android-cli
+          mkdir -p /tmp/android-cli
+          unzip -q cmdline-tools.zip -d /tmp/android-cli
+
+          if [ -d /tmp/android-cli/cmdline-tools ]; then
+            rm -rf "$ANDROID_SDK_ROOT/cmdline-tools"
+            mkdir -p "$ANDROID_SDK_ROOT/cmdline-tools"
+            mv /tmp/android-cli/cmdline-tools "$ANDROID_SDK_ROOT/cmdline-tools/latest"
+          else
+            echo "Unexpected extracted layout"
+            find /tmp/android-cli -maxdepth 3 -type d
+            exit 1
+          fi
 
           echo "ANDROID_HOME=$ANDROID_SDK_ROOT" >> "$GITHUB_ENV"
-          echo "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
+          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT" >> "$GITHUB_ENV"
           echo "$ANDROID_SDK_ROOT/platform-tools" >> "$GITHUB_PATH"
+          echo "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
 
           yes | "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$ANDROID_SDK_ROOT" --licenses
           "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$ANDROID_SDK_ROOT" \
